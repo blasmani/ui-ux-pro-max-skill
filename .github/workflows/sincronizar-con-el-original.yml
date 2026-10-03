@@ -1,0 +1,92 @@
+# Mantiene esta copia al dia con el repositorio original.
+#
+# ── POR QUE NO SE USA `gh repo sync` ──────────────────────────────────────────
+#
+# Se usaba, y fallaba TODOS LOS DIAS con este mensaje:
+#
+#   Upstream commits contain workflow changes, which require the `workflow`
+#   scope or permission to merge.
+#
+# El GITHUB_TOKEN automatico NO PUEDE escribir dentro de .github/workflows/
+# NUNCA. No es un permiso que falte y se pueda anadir aqui: es una restriccion
+# de seguridad de GitHub, para que un flujo comprometido no pueda reescribirse a
+# si mismo. Y el original cambia sus workflows de vez en cuando, asi que en
+# cuanto lo hizo, la sincronizacion se rompio para siempre.
+#
+# ── Y HABIA UN SEGUNDO FALLO, PEOR ────────────────────────────────────────────
+#
+# `gh repo sync --force` resetea esta rama a la del original. El original NO
+# tiene este fichero —es nuestro—, asi que el primer dia que la sincronizacion
+# hubiera funcionado, se habria borrado a si misma y no habria vuelto a correr
+# nunca. Se autodestruia.
+#
+# ── COMO SE ARREGLA ───────────────────────────────────────────────────────────
+#
+# Se sincroniza TODO menos la carpeta de workflows, que se deja congelada tal y
+# como esta en esta copia. Eso resuelve los dos problemas de una vez:
+#
+#   1. El push no lleva ningun cambio bajo .github/workflows/, asi que el
+#      GITHUB_TOKEN lo acepta y no hace falta ningun token personal.
+#   2. Este fichero sobrevive a su propia sincronizacion.
+#
+# Lo que se pierde: esta copia no recibe las mejoras de CI del original. No
+# importa: este fork existe para tener la SKILL al dia, no para desarrollar el
+# proyecto de arriba. Si algun dia hiciera falta, se traen a mano.
+#
+# OJO: esto sigue siendo un ESPEJO del contenido. No edites nada fuera de
+# .github/workflows/ — se pierde en la siguiente sincronizacion.
+name: Sincronizar con el original
+
+on:
+  schedule:
+    # 06:00 UTC = 01:00 en Peru. A esa hora no molesta a nadie.
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sincronizar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar esta copia
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Traer el contenido del original, sin tocar los workflows
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git remote add upstream https://github.com/nextlevelbuilder/ui-ux-pro-max-skill.git
+          git fetch upstream main
+
+          if [ "$(git rev-parse HEAD)" = "$(git rev-parse upstream/main)" ]; then
+            echo "Ya estaba al dia."
+            exit 0
+          fi
+
+          # Los workflows se guardan ANTES del reset y se devuelven despues, para
+          # que el arbol de .github/workflows/ quede identico a como estaba. Si
+          # cambiara aunque fuese un byte, GitHub rechazaria el push.
+          cp -r .github/workflows /tmp/workflows-de-esta-copia
+
+          git reset --hard upstream/main
+
+          rm -rf .github/workflows
+          cp -r /tmp/workflows-de-esta-copia .github/workflows
+
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Nada que sincronizar fuera de los workflows."
+            exit 0
+          fi
+
+          git commit -m "Sincronizacion con el original ($(git rev-parse --short upstream/main))"
+
+          # --force-with-lease y no --force: si alguien hubiera empujado algo a
+          # esta rama mientras corria el flujo, se para en vez de pisarlo.
+          git push --force-with-lease origin HEAD:main
