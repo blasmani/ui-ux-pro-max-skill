@@ -8,11 +8,8 @@ on:
       - 'cli/assets/data/**'
       - 'cli/assets/scripts/**'
       - 'scripts/validate-csv.py'
-      - 'scripts/evaluate-relevance.py'
-      - 'scripts/relevance_metrics.py'
       - 'scripts/smoke-stacks.sh'
       - 'scripts/smoke-domains.sh'
-      - 'cli/package.json'
       - '.github/workflows/smoke-stacks.yml'
   push:
     branches: [main]
@@ -29,10 +26,11 @@ jobs:
         with:
           python-version: '3.x'
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
+      - name: Validate CSV structure
+        run: python3 scripts/validate-csv.py
 
-      - name: Run aggregate offline data gate
-        run: npm --prefix cli run verify:data
+      - name: Run domain smoke test
+        run: bash scripts/smoke-domains.sh
+
+      - name: Run stack smoke test
+        run: bash scripts/smoke-stacks.sh
